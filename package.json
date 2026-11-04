@@ -1,0 +1,26 @@
+{
+  "name": "kotoba-teleprompt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:vendor": "node scripts/prepare-vendor.mjs",
+    "dev": "npm run prepare:vendor && vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "pretest": "npm run prepare:vendor",
+    "test": "vitest run",
+    "build": "npm run prepare:vendor && npm run check && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "kuromoji": "0.1.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.2.2",
+    "vitest": "5.1.0"
+  }
+}

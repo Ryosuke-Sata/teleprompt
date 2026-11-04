@@ -1,0 +1,8 @@
+node_modules/
+dist/
+public/vendor/
+src/vendor/
+playwright-report/
+test-results/
+*.local
+.DS_Store
