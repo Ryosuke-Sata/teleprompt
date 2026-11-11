@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const kuromoji = require('kuromoji');
 const tokenizer: { tokenize: (s: string) => import('../src/script').Token[] } = await new Promise((resolve, reject) => kuromoji.builder({ dicPath: join(dirname(require.resolve('kuromoji/package.json')), 'dict') }).build((err: Error | null, t: never) => err ? reject(err) : resolve(t)));
 const units = (text: string, dictionary: import('../src/model').DictionaryEntry[] = [], overrides: import('../src/model').ReadingOverride[] = []) => buildUnits(parseScript(text)[0], t => tokenizer.tokenize(t), dictionary, overrides);
-const step = (partial: Partial<Step> = {}): Step => ({ fromY: 0, y: 50, start: 0, end: 2, seconds: 1, gate: false, kind: 'text', blockId: 0, ...partial });
+const step = (partial: Partial<Step> = {}): Step => ({ fromY: 0, y: 50, start: 0, end: 2, seconds: 1, holdSeconds: 0, gate: false, kind: 'text', blockId: 0, ...partial });
 
 describe('Japanese timing with the actual bundled dictionary', () => {
   it('assigns the same mora count to 東京 and とうきょう', () => {
@@ -58,6 +58,51 @@ describe('notes, pauses, paragraphs and playback', () => {
     const result = createTimeline(rows, DEFAULT_SETTINGS);
     expect(result[1].seconds).toBe(result[0].seconds * 2);
   });
+  it.each([0, 1])('limits movement across a line with %i mora', mora => {
+    const block = parseScript('あ\n次の行')[0];
+    const rows: Row[] = [
+      { y: 0, start: 0, end: 1, mora, punctuation: 0, block, last: false },
+      { y: 72, start: 2, end: 5, mora: 4, punctuation: 0, block, last: true },
+    ];
+    const t = new Transport(createTimeline(rows, { ...DEFAULT_SETTINGS, moraPerMinute: 1200 }));
+    t.play();
+    t.tick(1 / 60);
+    expect(t.y).toBeGreaterThan(0);
+    expect(t.y).toBeLessThanOrEqual(3);
+  });
+
+  it.each(['adaptive', 'constant'] as const)('scrolls continuously across cues and zero-length paragraph pauses in %s mode', mode => {
+    const blocks = parseScript('[[メモ:合図]]\n\n[[待機:2]]\n[[停止]]\n次');
+    const rows: Row[] = blocks.map((block, i) => ({
+      y: i * 72, start: block.start, end: block.end, mora: 0, punctuation: 0, block, last: true,
+    }));
+    const settings = { ...DEFAULT_SETTINGS, mode, paragraphPause: 0 };
+    const t = new Transport(createTimeline(rows, settings));
+    const frame = 1 / 60;
+    const maxFrameDistance = (mode === 'constant' ? settings.pixelsPerSecond : 180) * frame;
+
+    t.play();
+    t.tick(frame);
+    expect(t.y).toBeGreaterThan(0);
+    expect(t.y).toBeLessThanOrEqual(maxFrameDistance + 0.0001);
+
+    const timeBeforeWait = t.steps[0].seconds + t.steps[1].seconds;
+    t.tick(timeBeforeWait - frame + 1.99);
+    expect(t.current.kind).toBe('wait');
+    expect(t.y).toBeCloseTo(144);
+    t.tick(.02);
+    expect(t.y).toBeGreaterThan(144);
+    expect(t.y - 144).toBeLessThanOrEqual(maxFrameDistance + 0.0001);
+
+    t.tick(t.steps[2].seconds);
+    expect(t.waitingForUser).toBe(true);
+    expect(t.y).toBeCloseTo(216);
+    t.play();
+    t.tick(frame);
+    expect(t.y).toBeGreaterThan(216);
+    expect(t.y - 216).toBeLessThanOrEqual(maxFrameDistance + 0.0001);
+  });
+
   it('does not instantly discard the last line in constant-speed mode', () => {
     const block = parseScript('本文')[0];
     expect(createTimeline([{ y: 0, start: 0, end: 2, mora: 4, punctuation: 0, block, last: true }], { ...DEFAULT_SETTINGS, mode: 'constant' })[0].seconds).toBeGreaterThan(0);

@@ -241,7 +241,14 @@ function updatePlayback() {
   const current = transport.current;
   const paragraphs = analysis.blocks.filter(b => b.kind === 'text');
   const paragraphIndex = current ? paragraphs.findIndex(b => b.id === current.blockId) : -1;
-  $('#position-label').textContent = current?.kind === 'wait' ? `待機中 ${Math.max(0, Math.ceil(current.seconds - transport.elapsed))}秒` : current?.kind === 'stop' ? '準備ができたら、再生を押してください' : paragraphIndex >= 0 ? `段落 ${paragraphIndex + 1} / ${paragraphs.length}` : !current && transport.steps.length ? 'すべて読み終わりました' : '原稿のはじめ';
+  const waitRemaining = current?.kind === 'wait' ? current.holdSeconds - transport.elapsed : 0;
+  let positionLabel = '原稿のはじめ';
+  if (transport.waitingForUser) positionLabel = '準備ができたら、再生を押してください';
+  else if (waitRemaining > 0) positionLabel = `待機中 ${Math.ceil(waitRemaining)}秒`;
+  else if (paragraphIndex >= 0) positionLabel = `段落 ${paragraphIndex + 1} / ${paragraphs.length}`;
+  else if (!current && transport.steps.length) positionLabel = 'すべて読み終わりました';
+  else if (current && transport.playing) positionLabel = '次の行へ';
+  $('#position-label').textContent = positionLabel;
   $<HTMLInputElement>('#progress').value = String(transport.steps.length ? Math.min(1000, (transport.index + (current?.seconds ? transport.elapsed / current.seconds : 0)) / transport.steps.length * 1000) : 0);
   const play = $<HTMLButtonElement>('#play');
   if (analysisState !== 'ready' && project.settings.mode === 'adaptive') play.disabled = true;

@@ -1,0 +1,11 @@
+# Keep source files and documents on LF across platforms.
+* text=auto eol=lf
+
+# Windows command scripts use CRLF when checked out.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gz binary
