@@ -2,26 +2,60 @@ import type { Settings } from './model';
 import { punctuationPause, type Analysis, type Block } from './script';
 
 export interface Row { y: number; start: number; end: number; mora: number; punctuation: number; block: Block; last: boolean }
-export interface Step { y: number; fromY: number; start: number; end: number; seconds: number; gate: boolean; kind: Block['kind']; blockId: number }
+export interface Step {
+  y: number;
+  fromY: number;
+  start: number;
+  end: number;
+  seconds: number;
+  holdSeconds: number;
+  gate: boolean;
+  kind: Block['kind'];
+  blockId: number;
+}
+
+const MAX_ADAPTIVE_SCROLL_PX_PER_SECOND = 180;
+
 export function createTimeline(rows: Row[], settings: Settings): Step[] {
-  const steps: Step[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const nextY = rows[i + 1]?.y ?? row.y;
-    let seconds: number;
-    if (row.block.kind === 'wait') seconds = row.block.seconds ?? 0;
-    else if (row.block.kind === 'stop') seconds = 0;
-    else if (row.block.kind === 'note') seconds = 0;
-    else if (row.block.kind === 'space') seconds = settings.paragraphPause;
-    else seconds = settings.mode === 'adaptive'
-      ? row.mora * 60 / settings.moraPerMinute + row.punctuation
-      : (Math.max(0, nextY - row.y) || settings.fontSize * settings.lineHeight) / settings.pixelsPerSecond;
-    // Reading and waits hold the current line; movement is continuous during text.
-    const target = row.block.kind === 'text' || row.block.kind === 'space' ? nextY : row.y;
-    steps.push({ y: target, fromY: row.y, start: row.start, end: row.end, seconds: Math.max(0, seconds), gate: row.block.kind === 'stop', kind: row.block.kind, blockId: row.block.id });
-    // Notes and cues have no reading time, but their display positions are reached by the previous text.
-  }
-  return steps;
+  const adaptive = settings.mode === 'adaptive';
+  const scrollSpeed = adaptive ? MAX_ADAPTIVE_SCROLL_PX_PER_SECOND : settings.pixelsPerSecond;
+
+  return rows.map((row, index) => {
+    const nextY = rows[index + 1]?.y ?? row.y;
+    const travelSeconds = Math.abs(nextY - row.y) / scrollSpeed;
+    let holdSeconds = 0;
+    let seconds = travelSeconds;
+
+    switch (row.block.kind) {
+      case 'text': {
+        const readingSeconds = adaptive
+          ? row.mora * 60 / settings.moraPerMinute + row.punctuation
+          : travelSeconds || settings.fontSize * settings.lineHeight / scrollSpeed;
+        seconds = Math.max(readingSeconds, travelSeconds);
+        break;
+      }
+      case 'space':
+        seconds = Math.max(settings.paragraphPause, travelSeconds);
+        if (!adaptive) holdSeconds = seconds - travelSeconds;
+        break;
+      case 'wait':
+        holdSeconds = row.block.seconds ?? 0;
+        seconds += holdSeconds;
+        break;
+    }
+
+    return {
+      y: nextY,
+      fromY: row.y,
+      start: row.start,
+      end: row.end,
+      seconds,
+      holdSeconds,
+      gate: row.block.kind === 'stop',
+      kind: row.block.kind,
+      blockId: row.block.id,
+    };
+  });
 }
 
 export function measureRows(container: HTMLElement, analysis: Analysis, settings: Settings): Row[] {
@@ -32,16 +66,18 @@ export function measureRows(container: HTMLElement, analysis: Analysis, settings
     const element = container.querySelector<HTMLElement>(`[data-block="${block.id}"]`);
     if (!element) continue;
     if (block.kind !== 'text') {
-      rows.push({ y: element.getBoundingClientRect().top - rect.top, start: block.start, end: block.end, mora: 0, punctuation: 0, block, last: true });
+      const bounds = element.getBoundingClientRect();
+      rows.push({ y: bounds.top + bounds.height / 2 - rect.top, start: block.start, end: block.end, mora: 0, punctuation: 0, block, last: true });
       continue;
     }
     const characters = Array.from(element.querySelectorAll<HTMLElement>('[data-offset]'));
-    const groups: { y: number; chars: HTMLElement[] }[] = [];
+    const groups: { top: number; centerY: number; chars: HTMLElement[] }[] = [];
     for (const char of characters) {
-      const y = char.getBoundingClientRect().top - rect.top;
+      const bounds = char.getBoundingClientRect();
+      const top = bounds.top - rect.top;
       const current = groups.at(-1);
-      if (current && Math.abs(current.y - y) < 2) current.chars.push(char);
-      else groups.push({ y, chars: [char] });
+      if (current && Math.abs(current.top - top) < 2) current.chars.push(char);
+      else groups.push({ top, centerY: top + bounds.height / 2, chars: [char] });
     }
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
@@ -60,7 +96,7 @@ export function measureRows(container: HTMLElement, analysis: Analysis, settings
         const part = Array.from(unit.text.slice(intersectionStart - unit.start, intersectionEnd - unit.start).replace(/\s/g, '')).length;
         mora += total ? unit.mora * part / total : 0;
       }
-      rows.push({ y: group.y, start, end, mora, punctuation: punctuationPause(group.chars.map(c => c.textContent).join(''), settings), block, last: i === groups.length - 1 });
+      rows.push({ y: group.centerY, start, end, mora, punctuation: punctuationPause(group.chars.map(c => c.textContent).join(''), settings), block, last: i === groups.length - 1 });
     }
   }
   return rows;
@@ -77,8 +113,10 @@ export class Transport {
   get y(): number {
     const step = this.current;
     if (!step) return this.steps.at(-1)?.y ?? 0;
-    const t = step.seconds ? Math.min(1, this.elapsed / step.seconds) : 0;
-    return step.fromY + (step.y - step.fromY) * t;
+    if (this.elapsed <= step.holdSeconds || step.y === step.fromY) return step.fromY;
+    const travelSeconds = step.seconds - step.holdSeconds;
+    const progress = Math.min(1, (this.elapsed - step.holdSeconds) / travelSeconds);
+    return step.fromY + (step.y - step.fromY) * progress;
   }
   get duration() { return this.steps.reduce((s, step) => s + step.seconds, 0); }
   get consumed() { return this.steps.slice(0, this.index).reduce((s, step) => s + step.seconds, 0) + this.elapsed; }

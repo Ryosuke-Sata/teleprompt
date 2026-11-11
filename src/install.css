@@ -1,0 +1,51 @@
+.install-invitation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border: 1px solid #cdd9cb;
+  border-radius: 12px;
+  background: #eef1e6;
+}
+
+.install-invitation-text {
+  flex: 1 1 200px;
+}
+
+.install-invitation h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.install-invitation p {
+  margin: 4px 0 0;
+  color: #465b4f;
+  font-size: 13px;
+}
+
+.install-invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+body.focus-mode .install-invitation {
+  display: none;
+}
+
+#install-dialog p {
+  color: #465b4f;
+}
+
+@media (max-width: 480px) {
+  .install-invitation {
+    padding: 12px;
+  }
+
+  .install-invitation-actions {
+    width: 100%;
+  }
+}

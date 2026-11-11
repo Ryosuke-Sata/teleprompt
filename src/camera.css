@@ -1,0 +1,106 @@
+#camera-mode {
+  color: #cde1c7;
+  white-space: nowrap;
+}
+
+body.camera-mode {
+  background: #172622;
+}
+
+body.camera-mode main {
+  padding: env(safe-area-inset-top) 0 0;
+}
+
+body.camera-mode .prompter-card {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  height: calc(100dvh - env(safe-area-inset-top));
+  min-height: 340px;
+  border: 0;
+  border-radius: 0;
+}
+
+body.camera-mode .viewport {
+  order: -1;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  --reading-font-size: clamp(20px, var(--prompt-size), 36px);
+  --camera-leading: min(var(--prompt-leading), 1.6);
+  --reading-line-height: calc(var(--reading-font-size) * var(--camera-leading));
+  --reading-top: calc(6px + var(--reading-font-size) / 2);
+}
+
+.camera-mode .script-track {
+  width: min(calc(var(--camera-columns, 7) * 1.04em), calc(100% - 36px));
+  line-height: var(--camera-leading);
+  text-align: center;
+  line-break: strict;
+}
+
+.camera-mode .script-block.note,
+.camera-mode .script-block.wait,
+.camera-mode .script-block.stop {
+  margin-inline: auto;
+}
+
+.camera-mode .reading-guide {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(calc(var(--camera-columns, 7) * 1.04em + 24px), calc(100% - 12px));
+  font-size: var(--reading-font-size);
+  border-radius: 8px;
+  background: #d8e1b611;
+}
+
+.camera-mode .reading-guide span {
+  display: none;
+}
+
+.camera-mode .stage-bottom-fade {
+  top: calc(6px + var(--reading-font-size) + 2 * var(--reading-line-height));
+  height: auto;
+  background: linear-gradient(transparent, var(--prompt-background) var(--reading-line-height));
+}
+
+.camera-mode .countdown-overlay {
+  justify-content: flex-start;
+  padding-top: 12px;
+}
+
+.camera-mode .countdown-overlay > span {
+  font-size: clamp(28px, 5vh, 56px);
+}
+
+.camera-mode .prompter-heading {
+  flex-shrink: 0;
+  height: auto;
+  min-height: 57px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding-block: 6px;
+}
+
+.camera-mode .transport-area,
+.camera-mode .analysis-bar {
+  flex-shrink: 0;
+}
+
+#camera-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+#camera-width {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 6px;
+  border-color: #ffffff2e;
+  color: #e4edd8;
+  background: #25362b;
+}
