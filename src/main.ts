@@ -1,4 +1,5 @@
 import './style.css';
+import './camera.css';
 import './install.css';
 import { setupAppInstall } from './install';
 import { Analyzer } from './analysis';
@@ -45,6 +46,9 @@ let hasStarted = false;
 let selectedStart = 0;
 let selectedEnd = 0;
 let composing = false;
+let presentationMode: 'editor' | 'focus' | 'camera' = 'editor';
+let measuredViewport = { width: 0, height: 0 };
+let resizeTimer: ReturnType<typeof setTimeout>;
 
 $('#app').innerHTML = `
   <header class="site-header">
@@ -106,8 +110,23 @@ $('#app').innerHTML = `
         <div class="editor-bottom"><span id="save-status">${icon('check')}ブラウザに自動保存</span><span>UTF-8</span></div>
       </section>
       <section class="prompter-card" id="prompter" aria-label="テレプロンプター">
-        <div class="prompter-heading"><span class="preview-title"><span class="status-dot"></span> PROMPTER <span id="play-state">停止中</span></span><div><button id="focus" class="preview-action" aria-label="集中モードに切り替え">集中モード</button><button id="fullscreen" class="icon-button" aria-label="全画面表示">${icon('expand')}</button></div></div>
-        <div class="viewport" id="viewport"><div class="reading-guide" aria-hidden="true"><span>›</span></div><div class="track-window"><div class="script-track" id="track"></div></div><div class="countdown-overlay" id="countdown-overlay" hidden><span id="countdown-number"></span><small>深呼吸して、始めましょう。</small></div><div class="stage-bottom-fade" aria-hidden="true"></div></div>
+        <div class="prompter-heading">
+          <span class="preview-title"><span class="status-dot"></span> PROMPTER <span id="play-state">停止中</span></span>
+          <div>
+            <div id="camera-options" hidden>
+              <label for="camera-width">行の幅</label>
+              <select id="camera-width">
+                <option value="5">約5文字</option>
+                <option value="7" selected>約7文字</option>
+                <option value="9">約9文字</option>
+              </select>
+            </div>
+            <button type="button" id="camera-mode" class="preview-action" aria-label="カメラ目線モードに切り替え">カメラ目線</button>
+            <button id="focus" class="preview-action" aria-label="集中モードに切り替え">集中モード</button>
+            <button id="fullscreen" class="icon-button" aria-label="全画面表示">${icon('expand')}</button>
+          </div>
+        </div>
+        <div class="viewport" id="viewport" tabindex="-1"><div class="reading-guide" aria-hidden="true"><span>›</span></div><div class="track-window"><div class="script-track" id="track"></div></div><div class="countdown-overlay" id="countdown-overlay" hidden><span id="countdown-number"></span><small>深呼吸して、始めましょう。</small></div><div class="stage-bottom-fade" aria-hidden="true"></div></div>
         <div class="transport-area"><div class="playback-info"><span id="position-label">原稿のはじめ</span><span id="time-label">約 0:00</span></div><input id="progress" type="range" min="0" max="1000" value="0" aria-label="読む位置"/>
           <div class="transport-buttons"><div class="left-controls"><button id="rewind" class="icon-button" aria-label="先頭に戻る" title="先頭に戻る（Home）">${icon('back')}</button><button id="previous" class="icon-button" aria-label="前の段落" title="前の段落（←）">${icon('prev')}</button></div><button id="play" class="play-button">${icon('play')}<span>再生する</span></button><div class="right-controls"><button id="next" class="icon-button" aria-label="次の段落" title="次の段落（→）">${icon('next')}</button><span class="keyboard-key">Space</span></div></div>
         </div>
@@ -180,6 +199,9 @@ function renderPreview() {
   rebuildTimeline(preservedOffset);
 }
 function rebuildTimeline(offset = currentOffset()) {
+  clearTimeout(resizeTimer);
+  const { width, height } = $('#viewport').getBoundingClientRect();
+  measuredViewport = { width, height };
   const rows = measureRows($('#track'), analysis, project.settings);
   transport = new Transport(createTimeline(rows, project.settings));
   let index = transport.steps.findIndex(s => s.start <= offset && s.end > offset);
@@ -348,9 +370,60 @@ $('#progress').addEventListener('input', () => { pause(); hasStarted = false; tr
 $('#retry-analysis').addEventListener('click', () => { analyzer.reset(); void analyzeProject(); });
 $('#fullscreen').addEventListener('click', async () => {
   try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#prompter').requestFullscreen(); }
-  catch { notify('このブラウザでは全画面表示を利用できません。集中モードをお試しください。'); }
+  catch {
+    notify(presentationMode === 'camera'
+      ? 'このブラウザでは全画面表示を利用できません。ウィンドウを広げてお使いください。'
+      : 'このブラウザでは全画面表示を利用できません。集中モードをお試しください。');
+  }
 });
-$('#focus').addEventListener('click', () => { document.body.classList.toggle('focus-mode'); $('#focus').textContent = document.body.classList.contains('focus-mode') ? '編集画面に戻る' : '集中モード'; pause(); });
+const cameraWidth = $<HTMLSelectElement>('#camera-width');
+
+function setPresentationMode(mode: typeof presentationMode) {
+  const offset = currentOffset();
+  pause();
+  presentationMode = mode;
+  const camera = mode === 'camera';
+  document.body.classList.toggle('focus-mode', mode !== 'editor');
+  document.body.classList.toggle('camera-mode', camera);
+  $('#camera-options').hidden = !camera;
+  const cameraButton = $('#camera-mode');
+  cameraButton.textContent = camera ? '編集に戻る' : 'カメラ目線';
+  cameraButton.setAttribute('aria-label', camera ? 'カメラ目線モードを終了' : 'カメラ目線モードに切り替え');
+  const focusButton = $('#focus');
+  focusButton.hidden = camera;
+  focusButton.textContent = mode === 'focus' ? '編集画面に戻る' : '集中モード';
+  focusButton.setAttribute('aria-label', focusButton.textContent);
+  rebuildTimeline(offset);
+}
+
+function exitCameraMode() {
+  setPresentationMode('editor');
+  $('#camera-mode').focus();
+  if (document.fullscreenElement === $('#prompter')) {
+    void document.exitFullscreen().catch(() => notify('全画面表示を終了できませんでした。Escで終了してください。'));
+  }
+}
+
+$('#camera-mode').addEventListener('click', () => {
+  if (presentationMode === 'camera') {
+    exitCameraMode();
+    return;
+  }
+  setPresentationMode('camera');
+  window.scrollTo(0, 0);
+  $('#viewport').focus({ preventScroll: true });
+});
+
+cameraWidth.addEventListener('change', () => {
+  const offset = currentOffset();
+  pause();
+  $('#viewport').style.setProperty('--camera-columns', cameraWidth.value);
+  rebuildTimeline(offset);
+});
+
+$('#focus').addEventListener('click', () => {
+  setPresentationMode(presentationMode === 'focus' ? 'editor' : 'focus');
+});
 document.addEventListener('fullscreenchange', () => { pause(); });
 document.querySelectorAll<HTMLElement>('[data-insert]').forEach(button => button.addEventListener('click', () => {
   const directive = button.dataset.insert;
@@ -440,6 +513,10 @@ $('#rehearsal-apply').addEventListener('click', () => {
 });
 $('#rehearsal-dialog').addEventListener('close', () => { rehearsalStarted = 0; });
 document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !event.isComposing && presentationMode === 'camera' && !document.fullscreenElement && !document.querySelector('dialog[open]')) {
+    exitCameraMode();
+    return;
+  }
   const target = event.target as HTMLElement;
   if (event.isComposing || event.ctrlKey || event.altKey || event.metaKey || target.closest('input, textarea, select, button, [contenteditable="true"], [role="tab"]') || document.querySelector('dialog[open]')) return;
   if (event.code === 'Space') { event.preventDefault(); startPlayback(); }
@@ -459,8 +536,13 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('pagehide', saveNow);
-let resizeTimer: ReturnType<typeof setTimeout>;
-new ResizeObserver(() => { const offset = currentOffset(); pause(); clearTimeout(resizeTimer); resizeTimer = setTimeout(() => rebuildTimeline(offset), 100); }).observe($('#viewport'));
+new ResizeObserver(() => {
+  const { width, height } = $('#viewport').getBoundingClientRect();
+  if (width === measuredViewport.width && height === measuredViewport.height) return;
+  pause();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => rebuildTimeline(), 100);
+}).observe($('#viewport'));
 let previousFrame = performance.now();
 function frame(now: number) {
   const delta = (now - previousFrame) / 1000; previousFrame = now;
