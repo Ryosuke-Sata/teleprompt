@@ -1,0 +1,31 @@
+{
+  "name": "ことば — 日本語テレプロンプター",
+  "short_name": "ことば",
+  "description": "日本語の読みの長さに合わせて進むテレプロンプター。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#f5f4ef",
+  "background_color": "#f5f4ef",
+  "icons": [
+    {
+      "src": "icons/kotoba-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/kotoba-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/kotoba-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import './style.css';
+import './install.css';
+import { setupAppInstall } from './install';
 import { Analyzer } from './analysis';
 import { DEFAULT_SETTINGS, MAX_TEXT, freshProject, isReading, validateProject, type Project, type Settings } from './model';
 import { fallbackAnalysis, parseScript, REHEARSAL_TEXT, rehearsalRate, type Analysis } from './script';
@@ -54,6 +56,16 @@ $('#app').innerHTML = `
   </header>
   <main>
     <section class="workspace-heading"><div><div class="eyebrow">YOUR WORDS, YOUR PACE</div><h1>言葉を、あなたのペースで。</h1><p>原稿を整えて、深呼吸。あとは、あなたの声で。</p></div><button id="rehearsal-open" class="button rehearsal-link">${icon('clock')}自分の速さを見つける<span>↗</span></button></section>
+    <section id="install-invitation" class="install-invitation" aria-labelledby="install-invitation-title" hidden>
+      <div class="install-invitation-text">
+        <h2 id="install-invitation-title">「ことば」をアプリに追加しませんか？</h2>
+        <p id="install-invitation-copy"></p>
+      </div>
+      <div class="install-invitation-actions">
+        <button type="button" id="install-invitation-action" class="button dark">追加方法を見る</button>
+        <button type="button" id="install-invitation-dismiss" class="button ghost">あとで</button>
+      </div>
+    </section>
     <div class="workspace">
       <section class="editor-card" aria-label="原稿と設定">
         <div class="tabs" role="tablist" aria-label="編集メニュー">
@@ -102,10 +114,15 @@ $('#app').innerHTML = `
         <div class="analysis-bar"><span id="analysis-status" role="status">日本語辞書を読み込み中…</span><button id="retry-analysis" hidden>再試行</button><span id="mode-label">日本語補正 ON</span></div>
       </section>
     </div>
-    <footer><span>ことば <span class="footer-divider">/</span> あなたの言葉を、まっすぐに。</span><div><button id="help-open">使い方</button><a href="${import.meta.env.BASE_URL}vendor/THIRD-PARTY.txt" target="_blank" rel="noopener">ライセンス</a><a href="${import.meta.env.BASE_URL}vendor/IPADIC-NOTICE.txt" target="_blank" rel="noopener">辞書について</a></div></footer>
+    <footer><span>ことば <span class="footer-divider">/</span> あなたの言葉を、まっすぐに。</span><div><button id="install-open" type="button" hidden>アプリに追加</button><button id="help-open">使い方</button><a href="${import.meta.env.BASE_URL}vendor/THIRD-PARTY.txt" target="_blank" rel="noopener">ライセンス</a><a href="${import.meta.env.BASE_URL}vendor/IPADIC-NOTICE.txt" target="_blank" rel="noopener">辞書について</a></div></footer>
   </main>
   <div id="toast" class="toast" role="status" hidden></div>
   <input id="file-input" type="file" accept=".json,.txt,application/json,text/plain" hidden/>
+  <dialog id="install-dialog" aria-labelledby="install-dialog-title">
+    <div class="dialog-heading"><h2 id="install-dialog-title">ことばをアプリに追加</h2><button type="button" data-close="install-dialog" class="close-button" aria-label="閉じる">×</button></div>
+    <ol id="install-steps"></ol>
+    <p id="install-note" hidden></p>
+  </dialog>
   <dialog id="save-dialog"><div class="dialog-heading"><h2>原稿を持ち出す</h2><button data-close="save-dialog" class="close-button" aria-label="閉じる">×</button></div><p>ブラウザの保存とは別に、ファイルを手元に残せます。</p><button id="export-json" class="export-option"><strong>原稿と設定を保存 <span>JSON ↗</span></strong><small>読み・辞書・ブックマークも、まとめて復元できます。</small></button><button id="export-txt" class="export-option"><strong>本文だけを保存 <span>TXT ↗</span></strong><small>UTF-8のテキスト。メモや待機の指示行も含みます。</small></button><p class="hint">JSON読み込み時は、ユーザー辞書を含めファイルの内容に置き換わります。現在の内容は先に保存してください。</p></dialog>
   <dialog id="rehearsal-dialog"><div class="dialog-heading"><h2>自分の速さを見つける</h2><button data-close="rehearsal-dialog" class="close-button" aria-label="閉じる">×</button></div><p>開始を押して、下の文章を自然な速さで読んでください。読み終えたら「計測を終える」を押します。マイクは使いません。</p><div class="rehearsal-script">${REHEARSAL_TEXT}</div><div class="rehearsal-result"><span id="rehearsal-time">0:00</span><p id="rehearsal-result">句読点の間も含めて、普段どおりに。</p></div><div class="dialog-actions"><button id="rehearsal-start" class="button dark">計測を始める</button><button id="rehearsal-apply" class="button" disabled>この速さを使う</button></div></dialog>
   <dialog id="help-dialog"><div class="dialog-heading"><h2>ことばの使い方</h2><button data-close="help-dialog" class="close-button" aria-label="閉じる">×</button></div><ol><li>本文に原稿を入力します。空行で段落を区切れます。</li><li>「設定」で文字サイズや速さを調整し、再生します。</li><li>漢字の読みは自動推定です。「読み・辞書」で確認・修正できます。</li><li>「保存する」からJSONを保存すると、原稿も設定も復元できます。</li></ol><h3>キーボード</h3><p>Space：再生・一時停止 ／ ← →：前後の段落 ／ Home：先頭<br>入力欄の編集中はショートカットを無効にします。</p><h3>メモと間の入れ方</h3><p>次の指示を、それぞれ専用の行に記入します。</p><pre>[[メモ:ここでカメラを見る]]\n[[待機:2]]\n[[停止]]</pre><p class="hint">メモは読み時間に含まれません。停止は再生ボタンで解除。本文を編集すると、位置が変わる読み修正・ブックマークはリセットされます。ユーザー辞書は残ります。</p><h3>推定時間について</h3><p>表示時間は目安です。人名・数字・英字の読みは誤ることがあります。黄色の推定箇所は、読みの指定をおすすめします。手動停止で待つ時間は推定時間に含まれません。</p><p class="hint">原稿・設定はブラウザ内で処理します。自動保存はブラウザのデータ削除で消えるため、JSONでも保存してください。TXTはUTF-8対応です。</p></dialog>
@@ -448,5 +465,6 @@ function frame(now: number) {
   if (transport.playing || transport.waitingForUser || countdownUntil || $('#play-state').textContent === '再生中' || $('#play-state').textContent === '開始待ち') updatePlayback();
   requestAnimationFrame(frame);
 }
+setupAppInstall(pause);
 syncSettings(); renderPreview(); renderLists(); void analyzeProject(); requestAnimationFrame(frame);
 if (loadWarning) notify(loadWarning);
